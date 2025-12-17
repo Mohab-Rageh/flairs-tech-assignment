@@ -35,24 +35,39 @@ export class TeamsService {
       // Generate team name from email (split by @ and take first part)
       const teamName = user.email.split('@')[0];
 
-      // Create team with budget of $5,000,000
-      const team = await this.prisma.team.create({
-        data: {
-          userId,
-          name: teamName,
-          budget: 5000000,
-        },
+      // Generate players data before transaction
+      const players = this.generatePlayers(''); // Will be updated with team.id in transaction
+
+      // Create team and players in a single transaction
+      await this.prisma.$transaction(async (tx) => {
+        // Create team with budget of $5,000,000
+        const team = await tx.team.create({
+          data: {
+            userId,
+            name: teamName,
+            budget: 5000000,
+          },
+        });
+
+        this.logger.log(
+          `Team created with ID: ${team.id} and name: ${teamName}`,
+        );
+
+        // Update players with the actual team ID
+        const playersWithTeamId = players.map((player) => ({
+          ...player,
+          teamId: team.id,
+        }));
+
+        // Create players
+        await tx.player.createMany({
+          data: playersWithTeamId,
+        });
+
+        this.logger.log(
+          `Created ${players.length} players for team ${team.id}`,
+        );
       });
-
-      this.logger.log(`Team created with ID: ${team.id} and name: ${teamName}`);
-
-      // Create players
-      const players = this.generatePlayers(team.id);
-      await this.prisma.player.createMany({
-        data: players,
-      });
-
-      this.logger.log(`Created ${players.length} players for team ${team.id}`);
     } catch (error) {
       this.logger.error(`Error creating team for user ${userId}:`, error);
       throw error;
