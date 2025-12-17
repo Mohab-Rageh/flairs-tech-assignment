@@ -189,113 +189,159 @@ export class TransfersService {
   }
 
   async buyPlayer(userId: string, transferId: string) {
+    // Initial check outside transaction for early validation (optimization)
     const buyerTeam = await this.prisma.team.findFirst({
       where: { userId },
-      include: { players: true },
+      select: {
+        id: true,
+        budget: true,
+        _count: {
+          select: { players: true },
+        },
+      },
     });
 
     if (!buyerTeam) {
       throw new NotFoundException('Team not found');
     }
 
-    if (buyerTeam.players.length >= 25) {
-      throw new BadRequestException(
-        'Team already has maximum number of players (25)',
-      );
-    }
+    // Perform all critical validations and updates inside transaction with Serializable isolation
+    let purchasePrice: Decimal;
+    let playerId: string;
+    let buyerTeamId: string;
 
-    const transfer = await this.prisma.transfer.findUnique({
-      where: { id: transferId },
-      include: {
-        player: {
-          include: {
+    await this.prisma.$transaction(
+      async (tx) => {
+        // Re-check transfer status inside transaction to prevent race conditions
+        const transfer = await tx.transfer.findUnique({
+          where: { id: transferId },
+          select: {
+            id: true,
+            playerId: true,
+            price: true,
+            status: true,
             team: {
-              include: {
-                user: true,
+              select: {
+                id: true,
+                userId: true,
+                budget: true,
+                _count: {
+                  select: { players: true },
+                },
               },
             },
           },
-        },
-        team: {
-          include: {
-            user: true,
+        });
+
+        if (!transfer) {
+          throw new NotFoundException('Transfer not found');
+        }
+
+        if (transfer.status !== TransferStatus.PENDING) {
+          throw new BadRequestException('Transfer is not available');
+        }
+
+        if (transfer.team.userId === userId) {
+          throw new BadRequestException('Cannot buy your own player');
+        }
+
+        // Re-check buyer team inside transaction
+        const buyerTeamCheck = await tx.team.findUnique({
+          where: { id: buyerTeam.id },
+          select: {
+            id: true,
+            budget: true,
+            _count: {
+              select: { players: true },
+            },
           },
-        },
+        });
+
+        if (!buyerTeamCheck) {
+          throw new NotFoundException('Buyer team not found');
+        }
+
+        if (buyerTeamCheck._count.players >= 25) {
+          throw new BadRequestException(
+            'Team already has maximum number of players (25)',
+          );
+        }
+
+        // Calculate purchase price at 95% of asking price using Decimal for precision
+        purchasePrice = new Decimal(transfer.price).mul(0.95);
+
+        if (new Decimal(buyerTeamCheck.budget).lt(purchasePrice)) {
+          throw new BadRequestException('Insufficient budget');
+        }
+
+        // Re-check seller team inside transaction
+        const sellerTeamCheck = await tx.team.findUnique({
+          where: { id: transfer.team.id },
+          select: {
+            id: true,
+            _count: {
+              select: { players: true },
+            },
+          },
+        });
+
+        if (!sellerTeamCheck) {
+          throw new NotFoundException('Seller team not found');
+        }
+
+        if (sellerTeamCheck._count.players <= 15) {
+          throw new BadRequestException(
+            'Seller team has minimum number of players (15). Cannot sell.',
+          );
+        }
+
+        // All validations passed, proceed with updates
+        await tx.transfer.update({
+          where: { id: transferId },
+          data: { status: TransferStatus.COMPLETED },
+        });
+
+        await tx.player.update({
+          where: { id: transfer.playerId },
+          data: { teamId: buyerTeamCheck.id },
+        });
+
+        await tx.team.update({
+          where: { id: buyerTeamCheck.id },
+          data: {
+            budget: {
+              decrement: purchasePrice,
+            },
+          },
+        });
+
+        await tx.team.update({
+          where: { id: transfer.team.id },
+          data: {
+            budget: {
+              increment: purchasePrice,
+            },
+          },
+        });
+
+        // Store values for logging and response
+        playerId = transfer.playerId;
+        buyerTeamId = buyerTeamCheck.id;
       },
-    });
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      },
+    );
 
-    if (!transfer) {
-      throw new NotFoundException('Transfer not found');
-    }
-
-    if (transfer.status !== TransferStatus.PENDING) {
-      throw new BadRequestException('Transfer is not available');
-    }
-
-    if (transfer.team.userId === userId) {
-      throw new BadRequestException('Cannot buy your own player');
-    }
-
-    // Calculate purchase price at 95% of asking price using Decimal for precision
-    const purchasePrice = new Decimal(transfer.price).mul(0.95);
-
-    if (new Decimal(buyerTeam.budget).lt(purchasePrice)) {
-      throw new BadRequestException('Insufficient budget');
-    }
-
-    const sellerTeam = await this.prisma.team.findFirst({
-      where: { userId: transfer.team.userId },
-      include: { players: true },
-    });
-
-    if (!sellerTeam) {
-      throw new NotFoundException('Seller team not found');
-    }
-
-    if (sellerTeam.players.length <= 15) {
-      throw new BadRequestException(
-        'Seller team has minimum number of players (15). Cannot sell.',
-      );
-    }
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.transfer.update({
-        where: { id: transferId },
-        data: { status: TransferStatus.COMPLETED },
-      });
-
-      await tx.player.update({
-        where: { id: transfer.playerId },
-        data: { teamId: buyerTeam.id },
-      });
-
-      await tx.team.update({
-        where: { id: buyerTeam.id },
-        data: {
-          budget: {
-            decrement: purchasePrice,
-          },
-        },
-      });
-
-      await tx.team.update({
-        where: { id: sellerTeam.id },
-        data: {
-          budget: {
-            increment: purchasePrice,
-          },
-        },
-      });
-    });
-
+    // Variables are guaranteed to be assigned if transaction succeeds
     this.logger.log(
-      `Player ${transfer.playerId} bought by team ${buyerTeam.id} for ${purchasePrice.toString()}`,
+      `Player ${playerId!} bought by team ${buyerTeamId!} for ${purchasePrice!.toString()}`,
     );
 
     return {
       message: 'Player purchased successfully',
-      purchasePrice: purchasePrice.toNumber(),
-      playerId: transfer.playerId,
+      purchasePrice: purchasePrice!.toNumber(),
+      playerId: playerId!,
     };
   }
 }
