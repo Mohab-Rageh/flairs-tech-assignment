@@ -98,6 +98,236 @@ npm run prisma:studio
 
 This opens a web interface at `http://localhost:5555` where you can browse your database.
 
+## API Endpoints
+
+All endpoints require JWT authentication (except `/auth/authenticate`). Include the token in the Authorization header:
+```
+Authorization: Bearer <your-jwt-token>
+```
+
+### Authentication
+
+#### POST /auth/authenticate
+Unified endpoint for user registration and login. If the user doesn't exist, they will be registered. If they exist, they will be logged in.
+
+**Request Body:**
+```json
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
+
+**Response (Registration):**
+```json
+{
+  "message": "User registered successfully",
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "uuid-here",
+    "email": "user@example.com"
+  }
+}
+```
+
+**Response (Login):**
+```json
+{
+  "message": "User authenticated successfully",
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "uuid-here",
+    "email": "user@example.com"
+  }
+}
+```
+
+### Teams
+
+#### GET /teams/my-team
+Get the authenticated user's team with all players.
+
+**Headers:**
+```
+Authorization: Bearer <jwt-token>
+```
+
+**Response:**
+```json
+{
+  "id": "team-uuid",
+  "name": "user",
+  "budget": "5000000",
+  "userId": "user-uuid",
+  "createdAt": "2025-12-17T...",
+  "updatedAt": "2025-12-17T...",
+  "players": [
+    {
+      "id": "player-uuid",
+      "name": "goalkeeper-1",
+      "position": "GOALKEEPER",
+      "value": "150000",
+      "teamId": "team-uuid",
+      "createdAt": "2025-12-17T...",
+      "updatedAt": "2025-12-17T..."
+    },
+    ...
+  ],
+  "user": {
+    "id": "user-uuid",
+    "email": "user@example.com"
+  }
+}
+```
+
+### Transfer Market
+
+#### GET /transfers
+Get all available transfers with optional filters.
+
+**Headers:**
+```
+Authorization: Bearer <jwt-token>
+```
+
+**Query Parameters (all optional):**
+- `teamName` - Filter by team name (case-insensitive)
+- `playerName` - Filter by player name (case-insensitive)
+- `minPrice` - Minimum price filter
+- `maxPrice` - Maximum price filter
+
+**Example Request:**
+```
+GET /transfers?teamName=john&minPrice=100000&maxPrice=500000
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "transfer-uuid",
+    "playerId": "player-uuid",
+    "teamId": "team-uuid",
+    "price": "200000",
+    "status": "PENDING",
+    "createdAt": "2025-12-17T...",
+    "updatedAt": "2025-12-17T...",
+    "player": {
+      "id": "player-uuid",
+      "name": "forward-1",
+      "position": "FORWARD",
+      "value": "180000",
+      "teamId": "team-uuid"
+    },
+    "team": {
+      "id": "team-uuid",
+      "name": "john",
+      "budget": "5000000",
+      "userId": "user-uuid",
+      "user": {
+        "id": "user-uuid",
+        "email": "john@example.com"
+      }
+    }
+  }
+]
+```
+
+#### POST /transfers
+Add a player to the transfer list with an asking price.
+
+**Headers:**
+```
+Authorization: Bearer <jwt-token>
+```
+
+**Request Body:**
+```json
+{
+  "playerId": "player-uuid",
+  "askingPrice": 200000
+}
+```
+
+**Response:**
+```json
+{
+  "id": "transfer-uuid",
+  "playerId": "player-uuid",
+  "teamId": "team-uuid",
+  "price": "200000",
+  "status": "PENDING",
+  "createdAt": "2025-12-17T...",
+  "updatedAt": "2025-12-17T...",
+  "player": {
+    "id": "player-uuid",
+    "name": "defender-1",
+    "position": "DEFENDER",
+    "value": "120000"
+  },
+  "team": {
+    "id": "team-uuid",
+    "name": "user",
+    "user": {
+      "id": "user-uuid",
+      "email": "user@example.com"
+    }
+  }
+}
+```
+
+**Note:** Requires team to have more than 15 players.
+
+#### DELETE /transfers/:id
+Remove a player from the transfer list.
+
+**Headers:**
+```
+Authorization: Bearer <jwt-token>
+```
+
+**Example Request:**
+```
+DELETE /transfers/transfer-uuid-here
+```
+
+**Response:**
+```json
+{
+  "message": "Transfer removed successfully"
+}
+```
+
+**Note:** Can only remove transfers from your own team.
+
+#### POST /transfers/:id/buy
+Buy a player from another team at 95% of the asking price.
+
+**Headers:**
+```
+Authorization: Bearer <jwt-token>
+```
+
+**Example Request:**
+```
+POST /transfers/transfer-uuid-here/buy
+```
+
+**Response:**
+```json
+{
+  "message": "Player purchased successfully",
+  "purchasePrice": 190000,
+  "playerId": "player-uuid"
+}
+```
+
+**Note:** 
+- Buyer pays 95% of asking price
+- Buyer must have less than 25 players
+- Buyer must have sufficient budget
+- Seller must have more than 15 players
+
 ## Time Report
 
 The following is a detailed breakdown of time spent on each section of the project:
