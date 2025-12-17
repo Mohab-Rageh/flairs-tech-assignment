@@ -50,25 +50,40 @@ export class TransfersService {
       };
     }
 
+    // Pagination defaults
+    const limit =
+      typeof filters.limit === 'number' && filters.limit > 0
+        ? filters.limit
+        : 50;
+    const page =
+      typeof filters.page === 'number' && filters.page > 0 ? filters.page : 1;
+    const skip = (page - 1) * limit;
+
+    // Get total count for pagination metadata
+    const total = await this.prisma.transfer.count({
+      where: whereClause,
+    });
+
+    // Get paginated transfers
     const transfers = await this.prisma.transfer.findMany({
       where: whereClause,
+      take: limit,
+      skip,
       include: {
         player: {
-          include: {
-            team: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    email: true,
-                  },
-                },
-              },
-            },
+          select: {
+            id: true,
+            name: true,
+            position: true,
+            value: true,
+            teamId: true,
           },
         },
         team: {
-          include: {
+          select: {
+            id: true,
+            name: true,
+            budget: true,
             user: {
               select: {
                 id: true,
@@ -83,7 +98,19 @@ export class TransfersService {
       },
     });
 
-    return transfers;
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      data: transfers,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      },
+    };
   }
 
   async addPlayerToTransferList(
