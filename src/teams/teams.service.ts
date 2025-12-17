@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Position } from '@prisma/client';
 
 import { PrismaService } from '../config/prisma.service';
@@ -112,5 +112,28 @@ export class TeamsService {
 
   private generatePlayerValue(min: number, max: number): number {
     return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  async getTeamByUserId(userId: string) {
+    const team = await this.prisma.team.findFirst({
+      where: { userId },
+      include: {
+        players: {
+          orderBy: [{ position: 'asc' }, { name: 'asc' }],
+        },
+        user: {
+          select: {
+            id: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    if (!team) {
+      throw new NotFoundException('Team not found');
+    }
+
+    return team;
   }
 }
