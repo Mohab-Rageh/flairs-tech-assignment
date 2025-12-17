@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, TransferStatus } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 import { PrismaService } from '../config/prisma.service';
 import { FilterTransfersDto } from './dto/filter-transfers.dto';
@@ -235,9 +236,10 @@ export class TransfersService {
       throw new BadRequestException('Cannot buy your own player');
     }
 
-    const purchasePrice = Number(transfer.price) * 0.95;
+    // Calculate purchase price at 95% of asking price using Decimal for precision
+    const purchasePrice = new Decimal(transfer.price).mul(0.95);
 
-    if (Number(buyerTeam.budget) < purchasePrice) {
+    if (new Decimal(buyerTeam.budget).lt(purchasePrice)) {
       throw new BadRequestException('Insufficient budget');
     }
 
@@ -287,12 +289,12 @@ export class TransfersService {
     });
 
     this.logger.log(
-      `Player ${transfer.playerId} bought by team ${buyerTeam.id} for ${purchasePrice}`,
+      `Player ${transfer.playerId} bought by team ${buyerTeam.id} for ${purchasePrice.toString()}`,
     );
 
     return {
       message: 'Player purchased successfully',
-      purchasePrice,
+      purchasePrice: purchasePrice.toNumber(),
       playerId: transfer.playerId,
     };
   }
