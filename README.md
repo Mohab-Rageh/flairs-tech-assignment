@@ -195,42 +195,53 @@ Authorization: Bearer <jwt-token>
 - `playerName` - Filter by player name (case-insensitive)
 - `minPrice` - Minimum price filter
 - `maxPrice` - Maximum price filter
+- `page` - Page number (default: 1, minimum: 1)
+- `limit` - Number of items per page (default: 50, minimum: 1, maximum: 100)
 
 **Example Request:**
 ```
-GET /transfers?teamName=john&minPrice=100000&maxPrice=500000
+GET /transfers?teamName=john&minPrice=100000&maxPrice=500000&page=1&limit=20
 ```
 
 **Response:**
 ```json
-[
-  {
-    "id": "transfer-uuid",
-    "playerId": "player-uuid",
-    "teamId": "team-uuid",
-    "price": "200000",
-    "status": "PENDING",
-    "createdAt": "2025-12-17T...",
-    "updatedAt": "2025-12-17T...",
-    "player": {
-      "id": "player-uuid",
-      "name": "forward-1",
-      "position": "FORWARD",
-      "value": "180000",
-      "teamId": "team-uuid"
-    },
-    "team": {
-      "id": "team-uuid",
-      "name": "john",
-      "budget": "5000000",
-      "userId": "user-uuid",
-      "user": {
-        "id": "user-uuid",
-        "email": "john@example.com"
+{
+  "data": [
+    {
+      "id": "transfer-uuid",
+      "playerId": "player-uuid",
+      "teamId": "team-uuid",
+      "price": "200000",
+      "status": "PENDING",
+      "createdAt": "2025-12-17T...",
+      "updatedAt": "2025-12-17T...",
+      "player": {
+        "id": "player-uuid",
+        "name": "forward-1",
+        "position": "FORWARD",
+        "value": "180000",
+        "teamId": "team-uuid"
+      },
+      "team": {
+        "id": "team-uuid",
+        "name": "john",
+        "budget": "5000000",
+        "user": {
+          "id": "user-uuid",
+          "email": "john@example.com"
+        }
       }
     }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 150,
+    "totalPages": 8,
+    "hasNextPage": true,
+    "hasPreviousPage": false
   }
-]
+}
 ```
 
 #### POST /transfers
