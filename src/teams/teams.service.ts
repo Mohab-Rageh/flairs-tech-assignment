@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Position } from '@prisma/client';
+import { Position, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../config/prisma.service';
 
@@ -13,17 +13,6 @@ export class TeamsService {
     this.logger.log(`Creating team for user ${userId}`);
 
     try {
-      // Check if user already has a team
-      const existingTeam = await this.prisma.team.findFirst({
-        where: { userId },
-      });
-
-      if (existingTeam) {
-        this.logger.log(`User ${userId} already has a team`);
-        return;
-      }
-
-      // Get user to extract email for team name
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
       });
@@ -32,15 +21,11 @@ export class TeamsService {
         throw new NotFoundException('User not found');
       }
 
-      // Generate team name from email (split by @ and take first part)
       const teamName = user.email.split('@')[0];
 
-      // Generate players data before transaction
-      const players = this.generatePlayers(''); // Will be updated with team.id in transaction
+      const players = this.generatePlayers();
 
-      // Create team and players in a single transaction
       await this.prisma.$transaction(async (tx) => {
-        // Create team with budget of $5,000,000
         const team = await tx.team.create({
           data: {
             userId,
@@ -53,13 +38,11 @@ export class TeamsService {
           `Team created with ID: ${team.id} and name: ${teamName}`,
         );
 
-        // Update players with the actual team ID
         const playersWithTeamId = players.map((player) => ({
           ...player,
           teamId: team.id,
         }));
 
-        // Create players
         await tx.player.createMany({
           data: playersWithTeamId,
         });
@@ -74,13 +57,9 @@ export class TeamsService {
     }
   }
 
-  private generatePlayers(teamId: string) {
-    const players: {
-      teamId: string;
-      name: string;
-      position: Position;
-      value: number;
-    }[] = [];
+  private generatePlayers() {
+    const teamId = 'temporary-team-id';
+    const players: Prisma.PlayerCreateManyInput[] = [];
 
     // 3 Goalkeepers
     for (let i = 1; i <= 3; i++) {
