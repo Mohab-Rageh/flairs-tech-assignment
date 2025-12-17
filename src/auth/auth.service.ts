@@ -1,17 +1,21 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 
 import { PrismaService } from '../config/prisma.service';
+import { TeamsService } from '../teams/teams.service';
 import { AuthDto } from './dto/auth.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly teamsService: TeamsService,
   ) {}
 
   async authenticate(authDto: AuthDto) {
@@ -40,6 +44,15 @@ export class AuthService {
         },
       });
       successMessage = 'User registered successfully';
+
+      // Create team in background (don't wait for it to complete)
+      const newUserId = user.id;
+      this.teamsService.createTeamForUser(newUserId).catch((error) => {
+        this.logger.error(
+          `Failed to create team for user ${newUserId}:`,
+          error,
+        );
+      });
     }
 
     const token = this.generateToken(user.id, user.email);
