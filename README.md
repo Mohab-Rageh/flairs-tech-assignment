@@ -97,3 +97,13 @@ npm run prisma:studio
 ```
 
 This opens a web interface at `http://localhost:5555` where you can browse your database.
+
+## Time Report
+
+The following is a detailed breakdown of time spent on each section of the project:
+
+| Task | Time Spent |
+|------|------------|
+| Cloned and refactored NestJS app template (created 2 months ago) | 1 hour |
+| Authentication module (unified register/login flow, JWT, password hashing) | 1.5 hours |
+| **Total** | **2.5 hours** |
