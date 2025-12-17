@@ -11,6 +11,7 @@ import {
 
 import { User } from '../common/decorators/user.decorator';
 import { JwtGuard } from '../common/guards/jwt.guard';
+import { BuyPlayerDto } from './dto/buy-player.dto';
 import { CreateTransferDto } from './dto/create-transfer.dto';
 import { FilterTransfersDto } from './dto/filter-transfers.dto';
 import { TransfersService } from './transfers.service';
@@ -52,7 +53,12 @@ export class TransfersController {
   async buyPlayer(
     @User() user: { id: string },
     @Param('id') transferId: string,
+    @Body() buyPlayerDto: BuyPlayerDto,
   ) {
-    return this.transfersService.buyPlayer(user.id, transferId);
+    return this.transfersService.buyPlayer(
+      user.id,
+      transferId,
+      buyPlayerDto.teamId,
+    );
   }
 }

@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -20,83 +19,75 @@ export class TransfersService {
   async getTransfers(filters: FilterTransfersDto) {
     const whereClause: Prisma.TransferWhereInput = {
       status: TransferStatus.PENDING,
+
+      player:
+        filters.playerName && filters.playerName.length > 0
+          ? {
+              name: {
+                contains: filters.playerName.trim(),
+                mode: 'insensitive',
+              },
+            }
+          : undefined,
+      team:
+        filters.teamName && filters.teamName.length > 0
+          ? {
+              name: {
+                contains: filters.teamName.trim(),
+                mode: 'insensitive',
+              },
+            }
+          : undefined,
+      price:
+        filters.minPrice || filters.maxPrice
+          ? {
+              gte: filters.minPrice ?? undefined,
+              lte: filters.maxPrice ?? undefined,
+            }
+          : undefined,
     };
 
-    if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
-      whereClause.price = {};
-      if (filters.minPrice !== undefined) {
-        whereClause.price.gte = filters.minPrice;
-      }
-      if (filters.maxPrice !== undefined) {
-        whereClause.price.lte = filters.maxPrice;
-      }
-    }
-
-    if (filters.teamName) {
-      whereClause.team = {
-        name: {
-          contains: filters.teamName.trim(),
-          mode: 'insensitive',
-        },
-      };
-    }
-
-    if (filters.playerName) {
-      whereClause.player = {
-        name: {
-          contains: filters.playerName.trim(),
-          mode: 'insensitive',
-        },
-      };
-    }
-
-    // Pagination defaults
-    const limit =
-      typeof filters.limit === 'number' && filters.limit > 0
-        ? filters.limit
-        : 50;
-    const page =
-      typeof filters.page === 'number' && filters.page > 0 ? filters.page : 1;
+    const limit = filters.limit ?? 50;
+    const page = filters.page ?? 1;
     const skip = (page - 1) * limit;
 
-    // Get total count for pagination metadata
-    const total = await this.prisma.transfer.count({
-      where: whereClause,
-    });
-
-    // Get paginated transfers
-    const transfers = await this.prisma.transfer.findMany({
-      where: whereClause,
-      take: limit,
-      skip,
-      include: {
-        player: {
-          select: {
-            id: true,
-            name: true,
-            position: true,
-            value: true,
-            teamId: true,
+    const [transfers, total] = await Promise.all([
+      await this.prisma.transfer.findMany({
+        where: whereClause,
+        take: limit,
+        skip,
+        include: {
+          player: {
+            select: {
+              id: true,
+              name: true,
+              position: true,
+              value: true,
+              teamId: true,
+            },
           },
-        },
-        team: {
-          select: {
-            id: true,
-            name: true,
-            budget: true,
-            user: {
-              select: {
-                id: true,
-                email: true,
+          team: {
+            select: {
+              id: true,
+              name: true,
+              budget: true,
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      await this.prisma.transfer.count({
+        where: whereClause,
+      }),
+    ]);
 
     const totalPages = Math.ceil(total / limit);
 
@@ -118,58 +109,57 @@ export class TransfersService {
     playerId: string,
     askingPrice: number,
   ) {
-    const team = await this.prisma.team.findFirst({
-      where: { userId },
-      include: { players: true },
-    });
-
-    if (!team) {
-      throw new NotFoundException('Team not found');
-    }
-
-    if (team.players.length <= 15) {
-      throw new BadRequestException(
-        'Team has minimum number of players (15). Cannot add players to transfer list.',
-      );
-    }
-
-    const player = team.players.find((p) => p.id === playerId);
-    if (!player) {
-      throw new NotFoundException('Player not found in your team');
-    }
-
-    const existingTransfer = await this.prisma.transfer.findFirst({
-      where: {
-        playerId,
-        status: TransferStatus.PENDING,
-      },
-    });
-
-    if (existingTransfer) {
-      throw new BadRequestException('Player is already in the transfer list');
-    }
-
-    const transfer = await this.prisma.transfer.create({
-      data: {
-        playerId,
-        teamId: team.id,
-        price: askingPrice,
-        status: TransferStatus.PENDING,
-      },
-      include: {
-        player: true,
-        team: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                email: true,
-              },
+    const transfer = await this.prisma.$transaction(
+      async (tx) => {
+        const team = await tx.team.findFirst({
+          where: {
+            userId,
+            players: { some: { id: playerId } },
+          },
+          select: {
+            id: true,
+            _count: {
+              select: { players: true },
             },
           },
-        },
+        });
+
+        if (!team) {
+          throw new NotFoundException('Player not found in one of your teams');
+        }
+
+        if (team._count.players <= 15) {
+          throw new BadRequestException(
+            'Team has minimum number of players (15). Cannot add players to transfer list.',
+          );
+        }
+
+        const existingTransfer = await tx.transfer.findFirst({
+          where: {
+            playerId,
+            status: TransferStatus.PENDING,
+          },
+        });
+
+        if (existingTransfer) {
+          throw new BadRequestException(
+            'Player is already in the transfer list',
+          );
+        }
+
+        return tx.transfer.create({
+          data: {
+            playerId,
+            teamId: team.id,
+            price: askingPrice,
+            status: TransferStatus.PENDING,
+          },
+        });
       },
-    });
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      },
+    );
 
     this.logger.log(
       `Player ${playerId} added to transfer list with price ${askingPrice}`,
@@ -179,27 +169,13 @@ export class TransfersService {
   }
 
   async removePlayerFromTransferList(userId: string, transferId: string) {
-    const team = await this.prisma.team.findFirst({
-      where: { userId },
-    });
-
-    if (!team) {
-      throw new NotFoundException('Team not found');
-    }
-
     const transfer = await this.prisma.transfer.findUnique({
-      where: { id: transferId },
+      where: { id: transferId, team: { userId } },
       include: { team: true },
     });
 
     if (!transfer) {
-      throw new NotFoundException('Transfer not found');
-    }
-
-    if (transfer.teamId !== team.id) {
-      throw new ForbiddenException(
-        'You can only remove transfers from your own team',
-      );
+      throw new NotFoundException('Transfer not found or not owned by you');
     }
 
     if (transfer.status !== TransferStatus.PENDING) {
@@ -215,10 +191,9 @@ export class TransfersService {
     return { message: 'Transfer removed successfully' };
   }
 
-  async buyPlayer(userId: string, transferId: string) {
-    // Initial check outside transaction for early validation (optimization)
+  async buyPlayer(userId: string, transferId: string, teamId: string) {
     const buyerTeam = await this.prisma.team.findFirst({
-      where: { userId },
+      where: { id: teamId, userId },
       select: {
         id: true,
         budget: true,
@@ -229,17 +204,15 @@ export class TransfersService {
     });
 
     if (!buyerTeam) {
-      throw new NotFoundException('Team not found');
+      throw new NotFoundException('Buyer team not found or not owned by you');
     }
 
-    // Perform all critical validations and updates inside transaction with Serializable isolation
     let purchasePrice: Decimal;
     let playerId: string;
     let buyerTeamId: string;
 
     await this.prisma.$transaction(
       async (tx) => {
-        // Re-check transfer status inside transaction to prevent race conditions
         const transfer = await tx.transfer.findUnique({
           where: { id: transferId },
           select: {
@@ -272,7 +245,6 @@ export class TransfersService {
           throw new BadRequestException('Cannot buy your own player');
         }
 
-        // Re-check buyer team inside transaction
         const buyerTeamCheck = await tx.team.findUnique({
           where: { id: buyerTeam.id },
           select: {
@@ -294,14 +266,12 @@ export class TransfersService {
           );
         }
 
-        // Calculate purchase price at 95% of asking price using Decimal for precision
         purchasePrice = new Decimal(transfer.price).mul(0.95);
 
         if (new Decimal(buyerTeamCheck.budget).lt(purchasePrice)) {
           throw new BadRequestException('Insufficient budget');
         }
 
-        // Re-check seller team inside transaction
         const sellerTeamCheck = await tx.team.findUnique({
           where: { id: transfer.team.id },
           select: {
@@ -322,7 +292,6 @@ export class TransfersService {
           );
         }
 
-        // All validations passed, proceed with updates
         await tx.transfer.update({
           where: { id: transferId },
           data: { status: TransferStatus.COMPLETED },
