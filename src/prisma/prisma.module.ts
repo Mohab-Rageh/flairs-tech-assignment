@@ -4,12 +4,7 @@ import { PrismaService } from '../config/prisma.service';
 
 @Global()
 @Module({
-  providers: [
-    {
-      provide: PrismaService,
-      useFactory: () => PrismaService.getInstance(),
-    },
-  ],
+  providers: [PrismaService],
   exports: [PrismaService],
 })
 export class PrismaModule {}
