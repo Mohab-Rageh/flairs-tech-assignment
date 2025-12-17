@@ -1,0 +1,22 @@
+{
+  "singleQuote": true,
+  "trailingComma": "all",
+  "printWidth": 80,
+  "tabWidth": 2,
+  "semi": true,
+  "endOfLine": "auto",
+  "plugins": ["@ianvs/prettier-plugin-sort-imports"],
+  "importOrderParserPlugins": ["typescript", "decorators-legacy"],
+  "importOrder": [
+    "<BUILTIN_MODULES>",
+    "<TYPES>^(node:)",
+    "",
+    "<THIRD_PARTY_MODULES>",
+    "<TYPES>",
+    "",
+    "^src",
+    "^[.]",
+    "<TYPES>^[.]",
+    "<TYPES>^src"
+  ]
+} 
