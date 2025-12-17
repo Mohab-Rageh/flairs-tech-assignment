@@ -23,15 +23,28 @@ export class TeamsService {
         return;
       }
 
+      // Get user to extract email for team name
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Generate team name from email (split by @ and take first part)
+      const teamName = user.email.split('@')[0];
+
       // Create team with budget of $5,000,000
       const team = await this.prisma.team.create({
         data: {
           userId,
+          name: teamName,
           budget: 5000000,
         },
       });
 
-      this.logger.log(`Team created with ID: ${team.id}`);
+      this.logger.log(`Team created with ID: ${team.id} and name: ${teamName}`);
 
       // Create players
       const players = this.generatePlayers(team.id);
@@ -49,41 +62,46 @@ export class TeamsService {
   private generatePlayers(teamId: string) {
     const players: {
       teamId: string;
+      name: string;
       position: Position;
       value: number;
     }[] = [];
 
     // 3 Goalkeepers
-    for (let i = 0; i < 3; i++) {
+    for (let i = 1; i <= 3; i++) {
       players.push({
         teamId,
+        name: `goalkeeper-${i}`,
         position: Position.GOALKEEPER,
         value: this.generatePlayerValue(50000, 200000), // Goalkeepers: $50k - $200k
       });
     }
 
     // 6 Defenders
-    for (let i = 0; i < 6; i++) {
+    for (let i = 1; i <= 6; i++) {
       players.push({
         teamId,
+        name: `defender-${i}`,
         position: Position.DEFENDER,
         value: this.generatePlayerValue(30000, 150000), // Defenders: $30k - $150k
       });
     }
 
     // 6 Midfielders
-    for (let i = 0; i < 6; i++) {
+    for (let i = 1; i <= 6; i++) {
       players.push({
         teamId,
+        name: `midfielder-${i}`,
         position: Position.MIDFIELDER,
         value: this.generatePlayerValue(40000, 180000), // Midfielders: $40k - $180k
       });
     }
 
     // 5 Attackers (FORWARD)
-    for (let i = 0; i < 5; i++) {
+    for (let i = 1; i <= 5; i++) {
       players.push({
         teamId,
+        name: `forward-${i}`,
         position: Position.FORWARD,
         value: this.generatePlayerValue(50000, 250000), // Attackers: $50k - $250k
       });

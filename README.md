@@ -106,4 +106,6 @@ The following is a detailed breakdown of time spent on each section of the proje
 |------|------------|
 | Cloned and refactored NestJS app template (created 2 months ago) | 1 hour |
 | Authentication module (unified register/login flow, JWT, password hashing) | 1.5 hours |
-| **Total** | **2.5 hours** |
+| Team Module (create a team after user registration) | 0.5 hour |
+| Transfer Market module (filter, add/remove players, buy players) | 0.5 hour |
+| **Total** | **3.5 hours** |

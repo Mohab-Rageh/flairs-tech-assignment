@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { TeamsModule } from './teams/teams.module';
+import { TransfersModule } from './transfers/transfers.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { TeamsModule } from './teams/teams.module';
     PrismaModule,
     AuthModule,
     TeamsModule,
+    TransfersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
