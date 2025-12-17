@@ -21,20 +21,26 @@ export class AuthService {
   async authenticate(authDto: AuthDto) {
     const { email, password } = authDto;
 
+    this.logger.log(`Authentication attempt for email: ${email}`);
+
     let user = await this.prisma.user.findUnique({
       where: { email },
     });
     let successMessage = 'User authenticated successfully';
 
     if (user) {
+      this.logger.log(`User found, validating password for: ${email}`);
       const isPasswordValid = await bcrypt.compare(password, user.password);
 
       if (!isPasswordValid) {
+        this.logger.warn(`Invalid password attempt for: ${email}`);
         throw new UnauthorizedException('Invalid credentials');
       }
+      this.logger.log(`Login successful for: ${email}`);
     }
 
     if (!user) {
+      this.logger.log(`New user registration for: ${email}`);
       const hashedPassword = await bcrypt.hash(password, 10);
 
       user = await this.prisma.user.create({
@@ -44,9 +50,11 @@ export class AuthService {
         },
       });
       successMessage = 'User registered successfully';
+      this.logger.log(`User created with ID: ${user.id}`);
 
       // Create team in background (don't wait for it to complete)
       const newUserId = user.id;
+      this.logger.log(`Triggering team creation for user: ${newUserId}`);
       this.teamsService.createTeamForUser(newUserId).catch((error) => {
         this.logger.error(
           `Failed to create team for user ${newUserId}:`,
