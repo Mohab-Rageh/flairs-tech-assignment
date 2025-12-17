@@ -29,7 +29,7 @@ export class TeamsService {
       });
 
       if (!user) {
-        throw new Error('User not found');
+        throw new NotFoundException('User not found');
       }
 
       // Generate team name from email (split by @ and take first part)
